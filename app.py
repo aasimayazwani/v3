@@ -1,23 +1,21 @@
 ###############################################################################
 # app.py – streamlined, hardened version for vehicles.db                      #
-# (Now using OpenAI ChatGPT API instead of Groq)                               #
+# (ChatGPT API + on‑the‑fly table download for *new* tables only)              #
 ###############################################################################
-import os
-import sys
 import unicodedata
 from pathlib import Path
 
 import streamlit as st
 from sqlalchemy import create_engine
 import sqlite3
-import pandas as pd  # Needed for CSV export
+import pandas as pd
 
 from langchain.agents import create_sql_agent
 from langchain.agents.agent_toolkits import SQLDatabaseToolkit
 from langchain.agents.agent_types import AgentType
 from langchain.callbacks import StreamlitCallbackHandler
 from langchain.sql_database import SQLDatabase
-from langchain_openai import ChatOpenAI  # Switched from langchain_groq.ChatGroq
+from langchain_openai import ChatOpenAI
 
 ###############################################################################
 # ---------- Utility helpers --------------------------------------------------
@@ -39,7 +37,7 @@ def ascii_sanitise(value: str) -> str:
 st.set_page_config(page_title="LangChain • Vehicles DB", page_icon="🚌")
 st.title("🚌 Chat with Vehicles Database")
 
-api_key_raw = st.sidebar.text_input("OpenAI API Key", type="password")  # label updated
+api_key_raw = st.sidebar.text_input("OpenAI API Key", type="password")
 api_key = ascii_sanitise(api_key_raw or "")
 
 if not api_key:
@@ -47,34 +45,40 @@ if not api_key:
     st.stop()
 
 ###############################################################################
-# ---------- Configure DB connection (cached, auto‑invalidated) --------------
+# ---------- Configure DB connection (cached, auto-invalidated) --------------
 ###############################################################################
-@st.cache_resource(ttl=0)  # no TTL; cache busts automatically on file mtime
+@st.cache_resource(ttl=0)
 def get_db_connection(db_path: Path, api_key_ascii: str):
     """Return (SQLDatabase, ChatOpenAI LLM) tuple."""
     if not db_path.exists():
         raise FileNotFoundError(f"Database file not found at: {db_path}")
 
-    st.session_state["_db_mtime"] = db_path.stat().st_mtime  # refresh trigger
+    st.session_state["_db_mtime"] = db_path.stat().st_mtime  # auto-invalidate
 
-    # SQLite read‑only URI
     creator = lambda: sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     sql_db = SQLDatabase(create_engine("sqlite:///", creator=creator))
 
-    # LLM (headers already ASCII‑safe)
     llm = ChatOpenAI(
         openai_api_key=api_key_ascii,
-        model_name="gpt-4o-mini",  # choose any ChatGPT model you prefer
+        model_name="gpt-4o-mini",
         streaming=True,
     )
     return sql_db, llm
 
 
-try:
-    db, llm = get_db_connection(DB_FILE, api_key)
-except FileNotFoundError as e:
-    st.error(str(e))
-    st.stop()
+db, llm = get_db_connection(DB_FILE, api_key)
+
+###############################################################################
+# ---------- Capture baseline tables -----------------------------------------
+###############################################################################
+# Store list of tables that existed *before* the current chat session.
+if "base_tables" not in st.session_state:
+    with sqlite3.connect(f"file:{DB_FILE}?mode=ro", uri=True) as _conn:
+        st.session_state["base_tables"] = {
+            row[0] for row in _conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table';"
+            )
+        }
 
 ###############################################################################
 # ---------- LangChain agent --------------------------------------------------
@@ -89,31 +93,37 @@ agent = create_sql_agent(
 )
 
 ###############################################################################
-# ---------- Table Download UI ------------------------------------------------
+# ---------- Table Download UI (new tables only) -----------------------------
 ###############################################################################
-st.sidebar.markdown("### 📥 Download Table as CSV")
+st.sidebar.markdown("### 📥 Download *new* Table as CSV")
 
-with sqlite3.connect(f"file:{DB_FILE}?mode=ro", uri=True) as conn:
-    tables = [row[0] for row in conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table';"
-    )]
+# Current tables minus baseline → newly created in this session
+with sqlite3.connect(f"file:{DB_FILE}?mode=ro", uri=True) as _conn:
+    current_tables = {
+        row[0] for row in _conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table';"
+        )
+    }
 
-selected_table = st.sidebar.selectbox("Select a table", tables)
+new_tables = sorted(current_tables - st.session_state["base_tables"])
 
-if selected_table:
-    df = pd.read_sql_query(
-        f"SELECT * FROM {selected_table};",
-        sqlite3.connect(f"file:{DB_FILE}?mode=ro", uri=True),
-    )
+if new_tables:
+    selected_new_table = st.sidebar.selectbox("Select a new table", new_tables)
 
-    csv_bytes = df.to_csv(index=False).encode("utf-8")
-
-    st.sidebar.download_button(
-        label=f"Download `{selected_table}.csv`",
-        data=csv_bytes,
-        file_name=f"{selected_table}.csv",
-        mime="text/csv",
-    )
+    if selected_new_table:
+        new_df = pd.read_sql_query(
+            f"SELECT * FROM {selected_new_table};",
+            sqlite3.connect(f"file:{DB_FILE}?mode=ro", uri=True),
+        )
+        csv_bytes = new_df.to_csv(index=False).encode("utf-8")
+        st.sidebar.download_button(
+            label=f"Download `{selected_new_table}.csv`",
+            data=csv_bytes,
+            file_name=f"{selected_new_table}.csv",
+            mime="text/csv",
+        )
+else:
+    st.sidebar.info("No new tables have been created in this chat session yet.")
 
 ###############################################################################
 # ---------- Chat UI & session history ---------------------------------------
@@ -125,7 +135,10 @@ if (
     st.session_state.messages = [
         {
             "role": "assistant",
-            "content": "Hi there – ask me anything about the **VEHICLE** table!",
+            "content": (
+                "Hi there – ask me anything about the **VEHICLE** table, or "
+                "create new tables with SQL and download them on the left!"
+            ),
         }
     ]
 
@@ -139,10 +152,9 @@ if user_query:
     st.session_state.messages.append({"role": "user", "content": user_query})
 
     with st.chat_message("assistant"):
-        streamlit_callback = StreamlitCallbackHandler(st.container())
-
+        cb = StreamlitCallbackHandler(st.container())
         try:
-            response = agent.run(user_query, callbacks=[streamlit_callback])
+            response = agent.run(user_query, callbacks=[cb])
         except UnicodeEncodeError:
             response = (
                 "⚠️ I encountered a Unicode encoding issue while talking to the LLM. "
