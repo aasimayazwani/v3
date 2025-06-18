@@ -1,5 +1,6 @@
 ###############################################################################
 # app.py – streamlined, hardened version for vehicles.db                      #
+# (Now using OpenAI ChatGPT API instead of Groq)                               #
 ###############################################################################
 import os
 import sys
@@ -9,14 +10,14 @@ from pathlib import Path
 import streamlit as st
 from sqlalchemy import create_engine
 import sqlite3
-import pandas as pd  # NEW: required for CSV export
+import pandas as pd  # Needed for CSV export
 
 from langchain.agents import create_sql_agent
 from langchain.agents.agent_toolkits import SQLDatabaseToolkit
 from langchain.agents.agent_types import AgentType
 from langchain.callbacks import StreamlitCallbackHandler
 from langchain.sql_database import SQLDatabase
-from langchain_groq import ChatGroq
+from langchain_openai import ChatOpenAI  # Switched from langchain_groq.ChatGroq
 
 ###############################################################################
 # ---------- Utility helpers --------------------------------------------------
@@ -25,10 +26,7 @@ DB_FILE = Path(__file__).parent / "vehicles.db"
 
 
 def ascii_sanitise(value: str) -> str:
-    """
-    Return a strictly-ASCII version of `value`.
-    Drops any code-points outside 0–127 to avoid httpx header errors.
-    """
+    """Return a strictly‑ASCII version of `value`."""
     return (
         unicodedata.normalize("NFKD", value)
         .encode("ascii", errors="ignore")
@@ -41,33 +39,32 @@ def ascii_sanitise(value: str) -> str:
 st.set_page_config(page_title="LangChain • Vehicles DB", page_icon="🚌")
 st.title("🚌 Chat with Vehicles Database")
 
-api_key_raw = st.sidebar.text_input("GRoq API Key", type="password")
+api_key_raw = st.sidebar.text_input("OpenAI API Key", type="password")  # label updated
 api_key = ascii_sanitise(api_key_raw or "")
 
 if not api_key:
-    st.info("Please enter your GRoq API key ↑ to begin.", icon="🔐")
+    st.info("Please enter your OpenAI API key ↑ to begin.", icon="🔐")
     st.stop()
 
 ###############################################################################
-# ---------- Configure DB connection (cached, auto-invalidated) --------------
+# ---------- Configure DB connection (cached, auto‑invalidated) --------------
 ###############################################################################
 @st.cache_resource(ttl=0)  # no TTL; cache busts automatically on file mtime
 def get_db_connection(db_path: Path, api_key_ascii: str):
-    """Return (SQLDatabase, ChatGroq LLM) tuple."""
+    """Return (SQLDatabase, ChatOpenAI LLM) tuple."""
     if not db_path.exists():
         raise FileNotFoundError(f"Database file not found at: {db_path}")
 
-    # Use file modification time in cache key to auto-refresh when the DB changes
-    st.session_state["_db_mtime"] = db_path.stat().st_mtime
+    st.session_state["_db_mtime"] = db_path.stat().st_mtime  # refresh trigger
 
-    # SQLite read-only URI
+    # SQLite read‑only URI
     creator = lambda: sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     sql_db = SQLDatabase(create_engine("sqlite:///", creator=creator))
 
-    # LLM (headers will already be ASCII-safe via ascii_sanitise)
-    llm = ChatGroq(
-        groq_api_key=api_key_ascii,
-        model_name="Llama3-8b-8192",
+    # LLM (headers already ASCII‑safe)
+    llm = ChatOpenAI(
+        openai_api_key=api_key_ascii,
+        model_name="gpt-4o-mini",  # choose any ChatGPT model you prefer
         streaming=True,
     )
     return sql_db, llm
@@ -96,7 +93,6 @@ agent = create_sql_agent(
 ###############################################################################
 st.sidebar.markdown("### 📥 Download Table as CSV")
 
-# Fetch available tables safely (read‑only connection)
 with sqlite3.connect(f"file:{DB_FILE}?mode=ro", uri=True) as conn:
     tables = [row[0] for row in conn.execute(
         "SELECT name FROM sqlite_master WHERE type='table';"
@@ -105,7 +101,6 @@ with sqlite3.connect(f"file:{DB_FILE}?mode=ro", uri=True) as conn:
 selected_table = st.sidebar.selectbox("Select a table", tables)
 
 if selected_table:
-    # Load table into a DataFrame
     df = pd.read_sql_query(
         f"SELECT * FROM {selected_table};",
         sqlite3.connect(f"file:{DB_FILE}?mode=ro", uri=True),
@@ -149,15 +144,11 @@ if user_query:
         try:
             response = agent.run(user_query, callbacks=[streamlit_callback])
         except UnicodeEncodeError:
-            # Very defensive: should not occur now that headers are sanitised,
-            # but catching it prevents Streamlit from crashing again.
             response = (
-                "⚠️ I just encountered a Unicode encoding issue while talking "
-                "to the LLM. Please try rephrasing your question using plain "
-                "ASCII characters."
+                "⚠️ I encountered a Unicode encoding issue while talking to the LLM. "
+                "Please try rephrasing your question using plain ASCII characters."
             )
         except Exception as e:
-            # Catch-all to show friendly error messages instead of stack-trace
             response = f"⚠️ Something went wrong:\n\n`{e}`"
 
         st.write(response)
