@@ -1,6 +1,6 @@
 ###############################################################################
 # app.py – streamlined, hardened version for vehicles.db                      #
-# (ChatGPT API + on‑the‑fly table download for *new* tables only)              #
+# (ChatGPT API + developer‑defined system instructions)                       #
 ###############################################################################
 import unicodedata
 from pathlib import Path
@@ -16,6 +16,23 @@ from langchain.agents.agent_types import AgentType
 from langchain.callbacks import StreamlitCallbackHandler
 from langchain.sql_database import SQLDatabase
 from langchain_openai import ChatOpenAI
+
+# Attempt to pull LangChain's default SQL prompt so we can append our own.
+try:
+    from langchain.agents.agent_toolkits.sql.prompt import SQL_PREFIX as _LC_SQL_PREFIX
+except Exception:  # Fallback if import path changes
+    _LC_SQL_PREFIX = ""
+
+###############################################################################
+# ---------- Developer system instructions -----------------------------------
+###############################################################################
+SYSTEM_INSTRUCTIONS = """
+You are a data‑savvy transit‑operations assistant.
+ • Answer in concise, plain English.
+ • When creating new tables, name them in lower‑case snake_case.
+ • Never modify or drop baseline tables that existed at the start of the chat.
+ • Always show executed SQL wrapped in ```sql``` code blocks.
+"""
 
 ###############################################################################
 # ---------- Utility helpers --------------------------------------------------
@@ -45,7 +62,7 @@ if not api_key:
     st.stop()
 
 ###############################################################################
-# ---------- Configure DB connection (cached, auto-invalidated) --------------
+# ---------- Configure DB connection (cached, auto‑invalidated) --------------
 ###############################################################################
 @st.cache_resource(ttl=0)
 def get_db_connection(db_path: Path, api_key_ascii: str):
@@ -53,7 +70,7 @@ def get_db_connection(db_path: Path, api_key_ascii: str):
     if not db_path.exists():
         raise FileNotFoundError(f"Database file not found at: {db_path}")
 
-    st.session_state["_db_mtime"] = db_path.stat().st_mtime  # auto-invalidate
+    st.session_state["_db_mtime"] = db_path.stat().st_mtime  # refresh on change
 
     creator = lambda: sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     sql_db = SQLDatabase(create_engine("sqlite:///", creator=creator))
@@ -71,7 +88,6 @@ db, llm = get_db_connection(DB_FILE, api_key)
 ###############################################################################
 # ---------- Capture baseline tables -----------------------------------------
 ###############################################################################
-# Store list of tables that existed *before* the current chat session.
 if "base_tables" not in st.session_state:
     with sqlite3.connect(f"file:{DB_FILE}?mode=ro", uri=True) as _conn:
         st.session_state["base_tables"] = {
@@ -81,15 +97,19 @@ if "base_tables" not in st.session_state:
         }
 
 ###############################################################################
-# ---------- LangChain agent --------------------------------------------------
+# ---------- LangChain agent with custom prompt ------------------------------
 ###############################################################################
 
 toolkit = SQLDatabaseToolkit(db=db, llm=llm)
+
+custom_prefix = SYSTEM_INSTRUCTIONS.strip() + "\n\n" + _LC_SQL_PREFIX
+
 agent = create_sql_agent(
     llm=llm,
     toolkit=toolkit,
     verbose=True,
     agent_type=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
+    prefix=custom_prefix,
 )
 
 ###############################################################################
@@ -97,7 +117,6 @@ agent = create_sql_agent(
 ###############################################################################
 st.sidebar.markdown("### 📥 Download *new* Table as CSV")
 
-# Current tables minus baseline → newly created in this session
 with sqlite3.connect(f"file:{DB_FILE}?mode=ro", uri=True) as _conn:
     current_tables = {
         row[0] for row in _conn.execute(
@@ -137,7 +156,7 @@ if (
             "role": "assistant",
             "content": (
                 "Hi there – ask me anything about the **VEHICLE** table, or "
-                "create new tables with SQL and download them on the left!"
+                "create new tables and download them from the sidebar!"
             ),
         }
     ]
