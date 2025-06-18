@@ -1,64 +1,134 @@
-import streamlit as st
+###############################################################################
+# app.py – streamlined, hardened version for vehicles.db
+###############################################################################
+import os
+import sys
+import unicodedata
 from pathlib import Path
-from langchain.agents import create_sql_agent
-from langchain.sql_database import SQLDatabase
-from langchain.agents.agent_types import AgentType
-from langchain.callbacks import StreamlitCallbackHandler
-from langchain.agents.agent_toolkits import SQLDatabaseToolkit
+
+import streamlit as st
 from sqlalchemy import create_engine
 import sqlite3
+
+from langchain.agents import create_sql_agent
+from langchain.agents.agent_toolkits import SQLDatabaseToolkit
+from langchain.agents.agent_types import AgentType
+from langchain.callbacks import StreamlitCallbackHandler
+from langchain.sql_database import SQLDatabase
 from langchain_groq import ChatGroq
 
-st.set_page_config(page_title="LangChain: Chat with SQL DB", page_icon="🦜")
-st.title("🦜 LangChain: Chat with Vehicles DB")
+###############################################################################
+# ---------- Utility helpers --------------------------------------------------
+###############################################################################
+DB_FILE = Path(__file__).parent / "vehicles.db"
 
-# === Ask only for API key ===
-api_key = st.sidebar.text_input(label="GRoq API Key", type="password")
+
+def ascii_sanitise(value: str) -> str:
+    """
+    Return a strictly-ASCII version of `value`.
+    Drops any code-points outside 0–127 to avoid httpx header errors.
+    """
+    return (
+        unicodedata.normalize("NFKD", value)
+        .encode("ascii", errors="ignore")
+        .decode("ascii")
+    )
+
+
+###############################################################################
+# ---------- Streamlit sidebar (API key only) ---------------------------------
+###############################################################################
+st.set_page_config(page_title="LangChain • Vehicles DB", page_icon="🚌")
+st.title("🚌 Chat with Vehicles Database")
+
+api_key_raw = st.sidebar.text_input("GRoq API Key", type="password")
+api_key = ascii_sanitise(api_key_raw or "")
 
 if not api_key:
-    st.info("Please add the groq API key to start.")
+    st.info("Please enter your GRoq API key ↑ to begin.", icon="🔐")
     st.stop()
 
-# === Configure LLM ===
-llm = ChatGroq(groq_api_key=api_key, model_name="Llama3-8b-8192", streaming=True)
+###############################################################################
+# ---------- Configure DB connection (cached, auto-invalidated) --------------
+###############################################################################
+@st.cache_resource(ttl=0)  # no TTL; cache busts automatically on file mtime
+def get_db_connection(db_path: Path, api_key_ascii: str):
+    """Return (SQLDatabase, ChatGroq LLM) tuple."""
+    if not db_path.exists():
+        raise FileNotFoundError(f"Database file not found at: {db_path}")
 
-@st.cache_resource(ttl="2h")
-def configure_db():
-    dbfilepath = (Path(__file__).parent / "vehicles.db").absolute()
-    if not dbfilepath.exists():
-        st.error(f"Database file not found at {dbfilepath}")
-        st.stop()
-    print(f"Using database at {dbfilepath}")
-    creator = lambda: sqlite3.connect(f"file:{dbfilepath}?mode=ro", uri=True)
-    return SQLDatabase(create_engine("sqlite:///", creator=creator))
+    # Use file modification time in cache key to auto-refresh when the DB changes
+    st.session_state["_db_mtime"] = db_path.stat().st_mtime
 
-# === Set up database and tools ===
-db = configure_db()
+    # SQLite read-only URI
+    creator = lambda: sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    sql_db = SQLDatabase(create_engine("sqlite:///", creator=creator))
+
+    # LLM (headers will already be ASCII-safe via ascii_sanitise)
+    llm = ChatGroq(
+        groq_api_key=api_key_ascii,
+        model_name="Llama3-8b-8192",
+        streaming=True,
+    )
+    return sql_db, llm
+
+
+try:
+    db, llm = get_db_connection(DB_FILE, api_key)
+except FileNotFoundError as e:
+    st.error(str(e))
+    st.stop()
+
+###############################################################################
+# ---------- LangChain agent --------------------------------------------------
+###############################################################################
 toolkit = SQLDatabaseToolkit(db=db, llm=llm)
-
 agent = create_sql_agent(
     llm=llm,
     toolkit=toolkit,
     verbose=True,
-    agent_type=AgentType.ZERO_SHOT_REACT_DESCRIPTION
+    agent_type=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
 )
 
-# === Chat history ===
-if "messages" not in st.session_state or st.sidebar.button("Clear message history"):
-    st.session_state["messages"] = [{"role": "assistant", "content": "How can I help you?"}]
+###############################################################################
+# ---------- Chat UI & session history ---------------------------------------
+###############################################################################
+if (
+    "messages" not in st.session_state
+    or st.sidebar.button("🗑️ Clear chat history", help="Start a fresh session")
+):
+    st.session_state.messages = [
+        {
+            "role": "assistant",
+            "content": "Hi there – ask me anything about the **VEHICLE** table!",
+        }
+    ]
 
 for msg in st.session_state.messages:
     st.chat_message(msg["role"]).write(msg["content"])
 
-# === Chat input ===
-user_query = st.chat_input(placeholder="Ask anything about the vehicles database...")
+user_query = st.chat_input("Ask a question…")
 
 if user_query:
-    st.session_state.messages.append({"role": "user", "content": user_query})
     st.chat_message("user").write(user_query)
+    st.session_state.messages.append({"role": "user", "content": user_query})
 
     with st.chat_message("assistant"):
         streamlit_callback = StreamlitCallbackHandler(st.container())
-        response = agent.run(user_query, callbacks=[streamlit_callback])
-        st.session_state.messages.append({"role": "assistant", "content": response})
+
+        try:
+            response = agent.run(user_query, callbacks=[streamlit_callback])
+        except UnicodeEncodeError:
+            # Very defensive: should not occur now that headers are sanitised,
+            # but catching it prevents Streamlit from crashing again.
+            response = (
+                "⚠️ I just encountered a Unicode encoding issue while talking "
+                "to the LLM. Please try rephrasing your question using plain "
+                "ASCII characters."
+            )
+        except Exception as e:
+            # Catch-all to show friendly error messages instead of stack-trace
+            response = f"⚠️ Something went wrong:\n\n`{e}`"
+
         st.write(response)
+        st.session_state.messages.append({"role": "assistant", "content": response})

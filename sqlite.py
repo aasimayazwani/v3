@@ -51,7 +51,7 @@ for v in vehicles:
 
 # === Display inserted records ===
 print("Inserted vehicle records:")
-for row in cursor.execute("SELECT * FROM VEHICLE LIMIT 5"):  # Display first 5 for brevity
+for row in cursor.execute("SELECT * FROM VEHICLE"):  # Display first 5 for brevity
     print(row)
 
 # === Commit and close ===
