@@ -1,32 +1,59 @@
 import sqlite3
+import json
 
-## connect to sqllite
-connection=sqlite3.connect("student.db")
+# === Load and parse the JSON file ===
+with open("getvehicles.json", "r") as file:
+    data = json.load(file)
 
-##create a cursor object to insert record,create table
-cursor=connection.cursor()
+vehicles = data["bustime-response"]["vehicle"]
 
-## create the table
-table_info="""
-create table STUDENT(NAME VARCHAR(25),CLASS VARCHAR(25),
-SECTION VARCHAR(25),MARKS INT)
+# === Connect to SQLite and create table ===
+connection = sqlite3.connect("vehicles.db")
+cursor = connection.cursor()
+
+# === Create the VEHICLE table ===
+cursor.execute("DROP TABLE IF EXISTS VEHICLE")  # to avoid re-creating in reruns
+create_table_query = """
+CREATE TABLE VEHICLE(
+    vid TEXT,
+    tmstmp TEXT,
+    lat REAL,
+    lon REAL,
+    hdg INTEGER,
+    rt TEXT,
+    des TEXT,
+    spd INTEGER,
+    tablockid TEXT,
+    tripid INTEGER,
+    blk INTEGER
+)
 """
+cursor.execute(create_table_query)
 
-cursor.execute(table_info)
+# === Insert data into VEHICLE ===
+for v in vehicles:
+    cursor.execute("""
+        INSERT INTO VEHICLE (vid, tmstmp, lat, lon, hdg, rt, des, spd, tablockid, tripid, blk)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        v.get("vid"),
+        v.get("tmstmp"),
+        float(v.get("lat", 0)),
+        float(v.get("lon", 0)),
+        int(v.get("hdg", 0)),
+        v.get("rt"),
+        v.get("des"),
+        int(v.get("spd", 0)),
+        v.get("tablockid"),
+        int(v.get("tripid", 0)) if "tripid" in v and v["tripid"] != "N/A" else None,
+        int(v.get("blk", 0)) if "blk" in v and v["blk"] != "N/A" else None
+    ))
 
-## Insert some more records
-cursor.execute('''Insert Into STUDENT values('Krish','Data Science','A',90)''')
-cursor.execute('''Insert Into STUDENT values('John','Data Science','B',100)''')
-cursor.execute('''Insert Into STUDENT values('Mukesh','Data Science','A',86)''')
-cursor.execute('''Insert Into STUDENT values('Jacob','DEVOPS','A',50)''')
-cursor.execute('''Insert Into STUDENT values('Dipesh','DEVOPS','A',35)''')
-
-## Display all the records
-print("The inserted records are")
-data=cursor.execute('''Select * from STUDENT''')
-for row in data:
+# === Display inserted records ===
+print("Inserted vehicle records:")
+for row in cursor.execute("SELECT * FROM VEHICLE LIMIT 5"):  # Display first 5 for brevity
     print(row)
 
-## Commit your changes in the database
+# === Commit and close ===
 connection.commit()
 connection.close()
