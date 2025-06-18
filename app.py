@@ -1,5 +1,5 @@
 ###############################################################################
-# app.py – streamlined, hardened version for vehicles.db
+# app.py – streamlined, hardened version for vehicles.db                      #
 ###############################################################################
 import os
 import sys
@@ -9,6 +9,7 @@ from pathlib import Path
 import streamlit as st
 from sqlalchemy import create_engine
 import sqlite3
+import pandas as pd  # NEW: required for CSV export
 
 from langchain.agents import create_sql_agent
 from langchain.agents.agent_toolkits import SQLDatabaseToolkit
@@ -33,7 +34,6 @@ def ascii_sanitise(value: str) -> str:
         .encode("ascii", errors="ignore")
         .decode("ascii")
     )
-
 
 ###############################################################################
 # ---------- Streamlit sidebar (API key only) ---------------------------------
@@ -82,6 +82,7 @@ except FileNotFoundError as e:
 ###############################################################################
 # ---------- LangChain agent --------------------------------------------------
 ###############################################################################
+
 toolkit = SQLDatabaseToolkit(db=db, llm=llm)
 agent = create_sql_agent(
     llm=llm,
@@ -89,6 +90,35 @@ agent = create_sql_agent(
     verbose=True,
     agent_type=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
 )
+
+###############################################################################
+# ---------- Table Download UI ------------------------------------------------
+###############################################################################
+st.sidebar.markdown("### 📥 Download Table as CSV")
+
+# Fetch available tables safely (read‑only connection)
+with sqlite3.connect(f"file:{DB_FILE}?mode=ro", uri=True) as conn:
+    tables = [row[0] for row in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table';"
+    )]
+
+selected_table = st.sidebar.selectbox("Select a table", tables)
+
+if selected_table:
+    # Load table into a DataFrame
+    df = pd.read_sql_query(
+        f"SELECT * FROM {selected_table};",
+        sqlite3.connect(f"file:{DB_FILE}?mode=ro", uri=True),
+    )
+
+    csv_bytes = df.to_csv(index=False).encode("utf-8")
+
+    st.sidebar.download_button(
+        label=f"Download `{selected_table}.csv`",
+        data=csv_bytes,
+        file_name=f"{selected_table}.csv",
+        mime="text/csv",
+    )
 
 ###############################################################################
 # ---------- Chat UI & session history ---------------------------------------
