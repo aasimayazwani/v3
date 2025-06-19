@@ -108,7 +108,7 @@ def get_db_connection(db_path: Path, api_key_ascii: str):
         openai_api_key=api_key_ascii,
         model_name="gpt-4o",
         streaming=True,
-    )
+    ).bind(system_message=SYSTEM_INSTRUCTIONS.strip())
     return sql_db, llm
 
 
@@ -131,14 +131,13 @@ if "base_tables" not in st.session_state:
 
 toolkit = SQLDatabaseToolkit(db=db, llm=llm)
 
-custom_prefix = SYSTEM_INSTRUCTIONS.strip() + "\n\n" + _LC_SQL_PREFIX
+#custom_prefix = SYSTEM_INSTRUCTIONS.strip() + "\n\n" + _LC_SQL_PREFIX
 
 agent = create_sql_agent(
     llm=llm,
     toolkit=toolkit,
     verbose=True,
-    agent_type=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
-    prefix=custom_prefix,
+    agent_type=AgentType.OPENAI_FUNCTIONS,  # 👈 updated agent type
 )
 
 ###############################################################################
