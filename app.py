@@ -249,14 +249,23 @@ toolkit = SQLDatabaseToolkit(db=db, llm=llm)
 
 custom_prefix = SYSTEM_INSTRUCTIONS.strip() + "\n\n" + _LC_SQL_PREFIX
 
-agent = create_sql_agent(
+from langchain.agents import AgentExecutor
+
+_base_agent = create_sql_agent(
     llm=llm,
     toolkit=toolkit,
-    verbose=True,
     agent_type=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
     prefix=custom_prefix,
-    handle_parsing_errors=True,
+    verbose=True,
 )
+
+agent = AgentExecutor.from_agent_and_tools(
+    agent=_base_agent.agent,
+    tools=toolkit.get_tools(),
+    handle_parsing_errors=True,  # ✅ Apply here
+    verbose=True,
+)
+
 
 ###############################################################################
 # ---------- Table Download UI (new tables only) -----------------------------
