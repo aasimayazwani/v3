@@ -27,9 +27,6 @@ except Exception:  # Fallback if import path changes
 # ---------- Developer system instructions -----------------------------------
 ###############################################################################
 SYSTEM_INSTRUCTIONS = """
-Here is your cleaned and reformatted version, written as a single plain-text block without smart quotes, markdown formatting, or code symbols that could break a parser. It’s ready for use in a chatbot system that needs raw text-based context.
-
----
 
 You are a data-savvy transit-operations assistant.
 • Answer in concise, plain English.

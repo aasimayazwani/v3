@@ -1,6 +1,6 @@
 ###############################################################################
-# app.py – streamlined, hardened version for vehicles.db
-# (ChatGPT API + developer-defined system instructions)
+# app.py – streamlined, hardened version for vehicles.db                      #
+# (ChatGPT API + developer‑defined system instructions)                       #
 ###############################################################################
 import unicodedata
 from pathlib import Path
@@ -17,16 +17,15 @@ from langchain.callbacks import StreamlitCallbackHandler
 from langchain.sql_database import SQLDatabase
 from langchain_openai import ChatOpenAI
 
-# Pull LangChain’s default SQL prefix so we can append our own instructions
+# Attempt to pull LangChain's default SQL prompt so we can append our own.
 try:
     from langchain.agents.agent_toolkits.sql.prompt import SQL_PREFIX as _LC_SQL_PREFIX
-except Exception:
+except Exception:  # Fallback if import path changes
     _LC_SQL_PREFIX = ""
 
 ###############################################################################
 # ---------- Developer system instructions -----------------------------------
 ###############################################################################
-
 SYSTEM_INSTRUCTIONS = """
 You are a data-savvy transit-operations assistant.
 • Answer in concise, plain English.
@@ -61,20 +60,21 @@ This structure allows for flexible and accurate responses to transit questions, 
 """
 
 ###############################################################################
-# ---------- Helper utilities -------------------------------------------------
+# ---------- Utility helpers --------------------------------------------------
 ###############################################################################
 DB_FILE = Path(__file__).parent / "vehicles.db"
 
 
-def ascii_sanitise(val: str) -> str:
+def ascii_sanitise(value: str) -> str:
+    """Return a strictly‑ASCII version of `value`."""
     return (
-        unicodedata.normalize("NFKD", val)
+        unicodedata.normalize("NFKD", value)
         .encode("ascii", errors="ignore")
         .decode("ascii")
     )
 
 ###############################################################################
-# ---------- Streamlit setup --------------------------------------------------
+# ---------- Streamlit sidebar (API key only) ---------------------------------
 ###############################################################################
 st.set_page_config(page_title="LangChain • Vehicles DB", page_icon="🚌")
 st.title("🚌 Chat with Vehicles Database")
@@ -87,86 +87,90 @@ if not api_key:
     st.stop()
 
 ###############################################################################
-# ---------- Cached DB + LLM loader ------------------------------------------
+# ---------- Configure DB connection (cached, auto‑invalidated) --------------
 ###############################################################################
 @st.cache_resource(ttl=0)
-def get_db_and_llm(db_path: Path, api_key_ascii: str):
-    """Return (SQLDatabase, ChatOpenAI) tuple."""
+def get_db_connection(db_path: Path, api_key_ascii: str):
+    """Return (SQLDatabase, ChatOpenAI LLM) tuple."""
     if not db_path.exists():
         raise FileNotFoundError(f"Database file not found at: {db_path}")
 
-    st.session_state["_db_mtime"] = db_path.stat().st_mtime  # invalidate cache on change
+    st.session_state["_db_mtime"] = db_path.stat().st_mtime  # refresh on change
 
     creator = lambda: sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     sql_db = SQLDatabase(create_engine("sqlite:///", creator=creator))
 
     llm = ChatOpenAI(
         openai_api_key=api_key_ascii,
-        model_name="gpt-4o",
+        model_name="gpt-4o-mini",
         streaming=True,
     )
     return sql_db, llm
 
 
-db, llm = get_db_and_llm(DB_FILE, api_key)
+db, llm = get_db_connection(DB_FILE, api_key)
 
 ###############################################################################
-# ---------- Baseline tables snapshot ----------------------------------------
+# ---------- Capture baseline tables -----------------------------------------
 ###############################################################################
 if "base_tables" not in st.session_state:
     with sqlite3.connect(f"file:{DB_FILE}?mode=ro", uri=True) as _conn:
         st.session_state["base_tables"] = {
-            row[0]
-            for row in _conn.execute("SELECT name FROM sqlite_master WHERE type='table';")
+            row[0] for row in _conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table';"
+            )
         }
 
 ###############################################################################
-# ---------- LangChain agent --------------------------------------------------
+# ---------- LangChain agent with custom prompt ------------------------------
 ###############################################################################
+
 toolkit = SQLDatabaseToolkit(db=db, llm=llm)
 
-# Merge our system instructions with LangChain’s standard SQL prefix
 custom_prefix = SYSTEM_INSTRUCTIONS.strip() + "\n\n" + _LC_SQL_PREFIX
 
 agent = create_sql_agent(
     llm=llm,
     toolkit=toolkit,
     verbose=True,
-    agent_type=AgentType.OPENAI_FUNCTIONS,
+    agent_type=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
     prefix=custom_prefix,
 )
 
 ###############################################################################
-# ---------- Table-download sidebar ------------------------------------------
+# ---------- Table Download UI (new tables only) -----------------------------
 ###############################################################################
 st.sidebar.markdown("### 📥 Download *new* Table as CSV")
 
 with sqlite3.connect(f"file:{DB_FILE}?mode=ro", uri=True) as _conn:
     current_tables = {
-        row[0]
-        for row in _conn.execute("SELECT name FROM sqlite_master WHERE type='table';")
+        row[0] for row in _conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table';"
+        )
     }
 
 new_tables = sorted(current_tables - st.session_state["base_tables"])
 
 if new_tables:
-    sel = st.sidebar.selectbox("Select a new table", new_tables)
-    if sel:
+    selected_new_table = st.sidebar.selectbox("Select a new table", new_tables)
+
+    if selected_new_table:
         new_df = pd.read_sql_query(
-            f"SELECT * FROM {sel};",
+            f"SELECT * FROM {selected_new_table};",
             sqlite3.connect(f"file:{DB_FILE}?mode=ro", uri=True),
         )
+        csv_bytes = new_df.to_csv(index=False).encode("utf-8")
         st.sidebar.download_button(
-            label=f"Download `{sel}.csv`",
-            data=new_df.to_csv(index=False).encode("utf-8"),
-            file_name=f"{sel}.csv",
+            label=f"Download `{selected_new_table}.csv`",
+            data=csv_bytes,
+            file_name=f"{selected_new_table}.csv",
             mime="text/csv",
         )
 else:
     st.sidebar.info("No new tables have been created in this chat session yet.")
 
 ###############################################################################
-# ---------- Chat UI ----------------------------------------------------------
+# ---------- Chat UI & session history ---------------------------------------
 ###############################################################################
 if (
     "messages" not in st.session_state
@@ -182,8 +186,8 @@ if (
         }
     ]
 
-for m in st.session_state.messages:
-    st.chat_message(m["role"]).write(m["content"])
+for msg in st.session_state.messages:
+    st.chat_message(msg["role"]).write(msg["content"])
 
 user_query = st.chat_input("Ask a question…")
 
@@ -194,13 +198,14 @@ if user_query:
     with st.chat_message("assistant"):
         cb = StreamlitCallbackHandler(st.container())
         try:
-            answer = agent.run(user_query, callbacks=[cb])
+            response = agent.run(user_query, callbacks=[cb])
         except UnicodeEncodeError:
-            answer = (
-                "⚠️ Unicode encoding issue. Try re-phrasing using plain ASCII characters."
+            response = (
+                "⚠️ I encountered a Unicode encoding issue while talking to the LLM. "
+                "Please try rephrasing your question using plain ASCII characters."
             )
-        except Exception as exc:
-            answer = f"⚠️ Something went wrong:\n\n`{exc}`"
+        except Exception as e:
+            response = f"⚠️ Something went wrong:\n\n`{e}`"
 
-        st.write(answer)
-        st.session_state.messages.append({"role": "assistant", "content": answer})
+        st.write(response)
+        st.session_state.messages.append({"role": "assistant", "content": response})
