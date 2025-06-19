@@ -17,7 +17,7 @@ from langchain.callbacks import StreamlitCallbackHandler
 from langchain.sql_database import SQLDatabase
 from langchain_openai import ChatOpenAI
 
-# Attempt to pull LangChain's default SQL prompt so we can append our own.
+# Attempt to pull LangChains default SQL prompt so we can append our own.
 try:
     from langchain.agents.agent_toolkits.sql.prompt import SQL_PREFIX as _LC_SQL_PREFIX
 except Exception:  # Fallback if import path changes
@@ -27,53 +27,166 @@ except Exception:  # Fallback if import path changes
 # ---------- Developer system instructions -----------------------------------
 ###############################################################################
 SYSTEM_INSTRUCTIONS = """
-You are a data savvy transit operations assistant
+Yes, the description I provided can indeed be improved by explicitly defining the key variables present in the tables and detailing how they relate to each other. While the initial version included some information about variables and their connections, it could be made more comprehensive and precise to better assist the SQL chatbot in understanding the database structure and improving table selection accuracy. Below, Ill explain how the description can be enhanced and provide a revised version with this additional detail.
 
-* Reply in clear plain English
-* Use lower\_case\_snake\_case when you create a new table
-* Never change or drop the baseline tables that were present when the chat began
-* Show every SQL you run inside a block that starts with three backticks followed by the word sql and ends with three backticks
+### How the Description Can Be Improved
 
-The database combines three data families
-1  Static GTFS planning data refreshed quarterly
-2  Real time AVL and battery predictions refreshed minutely
-3  Daily historical performance summaries
+The original description included a "Key Variables and Relationships" section, but it only briefly mentioned a few variables (e.g., `vid`, `tablockid`, `timestamp`, `route_id`) and their high-level connections across tables. To make it more useful, I can:
 
-GTFS planning tables
+1. **Expand the List of Variables**: Include more variables from each table that are likely relevant to user queries, such as `lat` and `lon` for location data or `soc` for state of charge predictions.
+2. **Provide Clear Definitions**: Define what each variable represents to avoid ambiguity (e.g., `vid` as "Vehicle ID" for unique vehicle identification).
+3. **Detail Relationships More Explicitly**: Explain how these variables act as keys or connectors between tables (e.g., `vid` as a primary key in `bus_vid` and a foreign key in `getvehicles`).
+4. **Organize by Table**: Structure the information by table to make it easier to see which variables belong where and how they link to other tables.
 
-* gtfs\_block  one row per scheduled block  key block\_id\_gtfs day service\_id  gives yard to yard times in service windows distance and deadhead totals
-* gtfs\_calendar\_dates  one row per calendar date  key date  maps each day to a service\_id so you can test whether a block or trip is active
-* gtfs\_shape  ordered GPS points for each shape\_id  key shape\_id sequence  lets you draw paths or measure length
-* gtfs\_trip  one row per scheduled trip  key trip\_id block\_id\_gtfs day trip\_index service\_id  links to blocks service patterns and shapes and marks trip\_type as STANDARD DEADHEAD or LAYOVER
+This additional detail will give the chatbot a clearer roadmap for selecting tables and formulating queries, especially for complex requests requiring joins across multiple tables.
 
-Real time tables
+### Revised Description
 
-* getvehicles  newest AVL snapshot  key timestamp vid  gives location heading speed delay flag passenger load and both user and GTFS ids for the active block and trip  A record is in service when tablockid is not null
-* clever\_pred  minute by minute battery forecast for electric buses  key timestamp vid  gives current\_soc predicted end\_of\_trip\_soc predicted end\_of\_block\_soc remaining miles and realised efficiency
+Heres an improved version of the description with a more detailed "Key Variables and Relationships" section:
 
-Historical tables
+---
 
-* trip\_event\_bustime  trip level stats for electric vehicles  key vid tatripid start\_timestamp  includes time distance soc energy speed acceleration temperature elevation and traffic
-* trip\_event\_bustime\_to\_block  block level roll-up  key vid tablockid start\_timestamp  aggregates the same metrics plus trip count and driver count
+# System Instruction for SQL Chatbot Agent: Enhancing Table Selection Accuracy
 
-Business rules
-Electric buses are 2401 2402 2403 2404 2405 2406 2407 707 736 768 775 777
-Battery alerts  soc below 10 percent critical  soc below 40 percent low  otherwise normal
+## Primary Goal
+Your primary goal is to correctly identify and utilize the appropriate database tables based on user queries. This involves understanding the users intent, matching it to the correct table(s), and handling any ambiguities or errors effectively.
 
-How to answer a question
-1  Decide whether it is about schedules real time status battery health or history
-2  Pick tables accordingly
-schedules  gtfs\_block gtfs\_trip gtfs\_calendar\_dates
-live status  getvehicles
-battery  clever\_pred
-history  trip\_event\_bustime or trip\_event\_bustime\_to\_block
-3  If a date is involved use gtfs\_calendar\_dates to find the right service\_id then join to blocks or trips
-4  Build and run SQL  present the query inside the sql fenced block and follow it with a plain English summary
+## Guidelines for Table Selection
 
-Remember
-one block has many trips
-one trip has many shape points
-static tables change only at quarterly feed updates while real time and historical tables update on their own schedules
+- **Context Analysis**:  
+  Analyze the context and intent behind user queries to determine what data is being requested. For example, if a user asks about the current location of a vehicle, recognize this as a query related to real-time vehicle data. If the query involves historical performance, identify it as historical data.
+
+- **Table Lookup**:  
+  Search the predefined database schema for tables relevant to the identified context. For instance, use `getvehicles` for real-time vehicle data or `trip_event_bustime` for historical trip statistics.
+
+- **Table Matching**:  
+  Prioritize tables that best correspond to key query terms or user-specified criteria. If the user mentions "block information," prioritize tables like `gtfs_block`. For predictions like "State of Charge," consider `clever_pred`.
+
+- **Error Handling**:  
+  If table identification is ambiguous or fails, use fallback mechanisms:
+  - Ask the user for clarification (e.g., "Do you want real-time or historical data?").
+  - Suggest possible tables based on partial matches (e.g., "Did you mean `getvehicles` for current status?").
+
+## Detailed Steps for Table Selection
+
+1. **Extract Key Terms and Intent**:  
+   Identify key terms (e.g., "current location," "predicted SOC," "historical trips") and determine the intent (e.g., real-time status, prediction, historical analysis).
+
+2. **Map to Table Categories**:  
+   Map the terms and intent to relevant table categories:  
+   - Real-time data: `getvehicles`, `clever_pred`  
+   - Historical data: `trip_event_bustime`, `trip_event_bustime_to_block`  
+   - Static data: `gtfs_block`, `bus_vid`
+
+3. **Search Database Schema**:  
+   Search the schema for tables matching the identified categories, using table descriptions and common query patterns as guides.
+
+4. **Narrow Down Selection**:  
+   If multiple tables match, use additional context or query terms to refine the choice. For example, "end-of-block SOC" points to `clever_pred` rather than `getvehicles`.
+
+5. **Handle Ambiguities**:  
+   If no tables match or ambiguity persists, prompt the user for more details or suggest possible tables based on partial matches.
+
+## Key Variables and Relationships
+
+To accurately select tables and formulate queries, its essential to understand the key variables in each table and how they connect across the database. Below is a detailed breakdown by table, including variable definitions and their relationships:
+
+### `getvehicles` (Real-Time Vehicle Data)
+- **Key Variables**:
+  - **`vid` (Vehicle ID)**: Unique identifier for a vehicle, linking to other tables.
+  - **`lat` (Latitude)**: Geographic latitude of the vehicles current position.
+  - **`lon` (Longitude)**: Geographic longitude of the vehicles current position.
+  - **`rt` (Route Tag)**: Indicates the route the vehicle is currently assigned to.
+  - **`tablockid` (Users Block Identifier)**: Identifies the block (sequence of trips) the vehicle is operating.
+  - **`timestamp`**: Time of the latest vehicle update.
+  - **`route_id`**: Identifier for the route, consistent with GTFS standards.
+- **Relationships**:
+  - `vid` links to `trip_event_bustime`, `clever_pred`, and `bus_vid` for vehicle-specific data.
+  - `tablockid` connects to `gtfs_block` and `trip_event_bustime_to_block` for block details.
+  - `route_id` aligns with `gtfs_block` and `trip_event_bustime` for route-specific queries.
+
+### `trip_event_bustime` (Historical Trip Data)
+- **Key Variables**:
+  - **`vid` (Vehicle ID)**: Identifies the vehicle that performed the trip.
+  - **`start_timestamp`**: Start time of the trip.
+  - **`end_timestamp`**: End time of the trip.
+  - **`route_id`**: Route associated with the trip.
+  - **`trip_id`**: Unique identifier for the trip.
+  - **`shape_id`**: Identifier for the trips geographic path.
+  - **`tablockid` (Users Block Identifier)**: Links to the block this trip belongs to.
+- **Relationships**:
+  - `vid` connects to `getvehicles`, `clever_pred`, and `bus_vid`.
+  - `tablockid` links to `gtfs_block` and `trip_event_bustime_to_block`.
+  - `route_id`, `trip_id`, and `shape_id` relate to `gtfs_block` for static trip and route data.
+
+### `clever_pred` (Prediction Data)
+- **Key Variables**:
+  - **`vid` (Vehicle ID)**: Vehicle for which the prediction is made.
+  - **`soc` (State of Charge)**: Predicted battery charge level (e.g., for electric buses).
+  - **`timestamp`**: Time of the prediction.
+- **Relationships**:
+  - `vid` links to `getvehicles`, `trip_event_bustime`, and `bus_vid`.
+  - `timestamp` can be correlated with `getvehicles.timestamp` for real-time context.
+
+### `gtfs_block` (Static Block Data)
+- **Key Variables**:
+  - **`tablockid` (Users Block Identifier)**: Unique block identifier.
+  - **`route_id`**: Route associated with the block.
+  - **`trip_id`**: Trip within the block.
+  - **`shape_id`**: Shape of the trips path.
+- **Relationships**:
+  - `tablockid` connects to `getvehicles` and `trip_event_bustime_to_block`.
+  - `route_id`, `trip_id`, and `shape_id` align with `trip_event_bustime`.
+
+### `bus_vid` (Static Vehicle Specs)
+- **Key Variables**:
+  - **`vid` (Vehicle ID)**: Unique vehicle identifier.
+  - *(Other static attributes like model or capacity may exist but are not specified here.)*
+- **Relationships**:
+  - `vid` links to `getvehicles`, `trip_event_bustime`, and `clever_pred`.
+
+### `trip_event_bustime_to_block` (Historical Block Mapping)
+- **Key Variables**:
+  - **`tablockid` (Users Block Identifier)**: Block identifier.
+  - *(Likely includes trip or event references, though not fully specified.)*
+- **Relationships**:
+  - `tablockid` connects to `getvehicles` and `gtfs_block`.
+
+By understanding these variables and their interconnections, you can select the appropriate tables and join them effectively for queries requiring data from multiple sources (e.g., joining `getvehicles` and `clever_pred` on `vid` for real-time location and predicted SOC).
+
+## Mechanisms for Ongoing Learning and Adaptation
+
+- **Feedback Loop**:  
+  Learn from user feedback on table selection accuracy and adjust logic to improve future performance.
+
+- **Interaction History**:  
+  Analyze past interactions to identify patterns in user queries and successful table matches, refining the mapping of terms to tables.
+
+- **Periodic Updates**:  
+  Regularly update the table schema and selection logic based on database changes or evolving user query patterns.
+
+## Example Application
+- **Query**: "What is the current location of bus 2401?"  
+  - **Step 1**: Key terms: "current location" → Intent: real-time data.  
+  - **Step 2**: Category: real-time data → Tables: `getvehicles`.  
+  - **Variables**: Use `vid`, `lat`, `lon`, `timestamp`.
+
+- **Query**: "What is the predicted SOC for bus 2402?"  
+  - **Step 1**: Key terms: "predicted SOC" → Intent: prediction.  
+  - **Step 2**: Category: predictions → Tables: `clever_pred`.  
+  - **Variables**: Use `vid`, `soc`, `timestamp`.
+
+- **Query**: "Tell me about bus 2403s last trip."  
+  - **Step 1**: Key terms: "last trip" → Intent: historical data.  
+  - **Step 2**: Category: historical data → Tables: `trip_event_bustime`.  
+  - **Variables**: Use `vid`, `start_timestamp`, `end_timestamp`, `route_id`.
+
+By incorporating this detailed variable information, youll enhance your ability to select accurate tables and craft precise SQL queries, improving response relevance and user satisfaction.
+
+---
+
+### Why This Is an Improvement
+This revised description provides a clearer, more structured overview of the variables in each table, their meanings, and how they serve as bridges between tables. This added clarity ensures the chatbot can better interpret user queries, select the right tables, and understand how to combine them when needed, addressing your concern about defining variables and their relationships more explicitly.
 """
 ###############################################################################
 # ---------- Utility helpers --------------------------------------------------
@@ -148,7 +261,7 @@ if "base_tables" not in st.session_state:
     with sqlite3.connect(f"file:{DB_FILE}?mode=ro", uri=True) as _conn:
         st.session_state["base_tables"] = {
             row[0] for row in _conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table';"
+                "SELECT name FROM sqlite_master WHERE type=table;"
             )
         }
 
@@ -177,7 +290,7 @@ st.sidebar.markdown("### 📥 Download *new* Table as CSV")
 with sqlite3.connect(f"file:{DB_FILE}?mode=ro", uri=True) as _conn:
     current_tables = {
         row[0] for row in _conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table';"
+            "SELECT name FROM sqlite_master WHERE type=table;"
         )
     }
 

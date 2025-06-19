@@ -12,7 +12,6 @@ if db_path.exists():
 
 # === CSV file to table mapping ===
 csv_files = {
-    "vehicle": "VEHICLE.csv",
     "getvehicles": "getvehicles.csv",
     "gtfs_block": "gtfs_block.csv",
     "gtfs_trip": "gtfs_trip.csv",
@@ -20,7 +19,8 @@ csv_files = {
     "gtfs_calendar_dates": "gtfs_calendar_dates.csv",
     "trip_event_bustime": "trip_event_bustime.csv",
     "trip_event_bustime_to_block": "trip_event_bustime_to_block.csv",
-    "clever_pred": "clever_pred.csv"
+    "clever_pred": "clever_pred.csv",
+    "bus_vid":"bus_vid.csv"
 }
 
 # === Create a new SQLite connection ===
