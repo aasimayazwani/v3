@@ -16,7 +16,7 @@ from langchain.agents.agent_types import AgentType
 from langchain.callbacks import StreamlitCallbackHandler
 from langchain.sql_database import SQLDatabase
 from langchain_openai import ChatOpenAI
-
+import re
 # Attempt to pull LangChain's default SQL prompt so we can append our own.
 try:
     from langchain.agents.agent_toolkits.sql.prompt import SQL_PREFIX as _LC_SQL_PREFIX
@@ -182,7 +182,13 @@ By understanding these variables and their interconnections, you can select the 
   - Step 2: Category: historical data → Tables: trip_event_bustime.  
   - Variables: Use vid, start_timestamp, end_timestamp, route_id.
 
+if the user has asked for set of numbers that can be formatted in a tabular table format for them to view and download from inside the chat. 
 """
+
+def extract_raw_sql(text: str) -> str:
+    """Extracts the raw SQL query from markdown-fenced output, or returns raw."""
+    match = re.search(r"```sql\s+(.*?)```", text, re.DOTALL | re.IGNORECASE)
+    return match.group(1).strip() if match else text.strip()
 ###############################################################################
 # ---------- Utility helpers --------------------------------------------------
 ###############################################################################
@@ -329,7 +335,6 @@ if (
             "role": "assistant",
             "content": (
                 "Hi there – ask me anything about the **vehicles.db** tables. "
-                "If your query returns a table, I'll show it below and you can download it!"
             ),
         }
     ]
