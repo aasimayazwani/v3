@@ -5,7 +5,6 @@ import pandas as pd
 # === Connect to SQLite DB ===
 db_path = Path("vehicles.db")
 connection = sqlite3.connect(db_path)
-cursor = connection.cursor()
 
 # === List of CSV files to import ===
 csv_files = {
@@ -30,24 +29,15 @@ for table_name, file_name in csv_files.items():
     print(f"📦 Loading {file_name} → table `{table_name}`")
     df = pd.read_csv(path, dtype=str, na_values="", keep_default_na=False)
 
-    # Infer numeric types where possible
+    # Try to infer numeric types
     for col in df.columns:
         try:
-            df[col] = pd.to_numeric(df[col], downcast="integer")
-        except ValueError:
-            pass
-        try:
-            df[col] = pd.to_numeric(df[col], downcast="float")
-        except ValueError:
+            df[col] = pd.to_numeric(df[col], errors="ignore", downcast="float")
+        except Exception:
             pass
 
-    # Drop and create the table
-    col_defs = ", ".join(f'"{c}" TEXT' for c in df.columns)  # Default all columns to TEXT
-    cursor.execute(f'DROP TABLE IF EXISTS "{table_name}"')
-    cursor.execute(f'CREATE TABLE "{table_name}" ({col_defs})')
-
-    # Insert into DB
-    df.to_sql(table_name, connection, if_exists="append", index=False)
+    # Insert into DB (automatically replaces any existing table)
+    df.to_sql(table_name, connection, if_exists="replace", index=False)
 
 print("✅ All CSV tables imported successfully.")
 connection.commit()
