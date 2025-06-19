@@ -180,13 +180,6 @@ By understanding these variables and their interconnections, you can select the 
   - **Step 1**: Key terms: "last trip" → Intent: historical data.  
   - **Step 2**: Category: historical data → Tables: `trip_event_bustime`.  
   - **Variables**: Use `vid`, `start_timestamp`, `end_timestamp`, `route_id`.
-
-By incorporating this detailed variable information, youll enhance your ability to select accurate tables and craft precise SQL queries, improving response relevance and user satisfaction.
-
----
-
-### Why This Is an Improvement
-This revised description provides a clearer, more structured overview of the variables in each table, their meanings, and how they serve as bridges between tables. This added clarity ensures the chatbot can better interpret user queries, select the right tables, and understand how to combine them when needed, addressing your concern about defining variables and their relationships more explicitly.
 """
 ###############################################################################
 # ---------- Utility helpers --------------------------------------------------
