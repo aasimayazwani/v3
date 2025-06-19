@@ -16,10 +16,6 @@ from langchain.callbacks import StreamlitCallbackHandler
 from langchain.sql_database import SQLDatabase
 from langchain_openai import ChatOpenAI
 import re
-from io import BytesIO, StringIO
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle
-from reportlab.lib.pagesizes import letter
-from reportlab.lib import colors
 # Attempt to pull LangChain's default SQL prompt so we can append our own.
 try:
     from langchain.agents.agent_toolkits.sql.prompt import SQL_PREFIX as _LC_SQL_PREFIX
@@ -449,11 +445,26 @@ if user_query:
     with st.chat_message("assistant"):
         cb = StreamlitCallbackHandler(st.container())
         try:
-            # Run the agent
             response = agent.run(user_query, callbacks=[cb])
 
-            # NEW unified display + download handling
-            chat_reply = display_response_with_downloads(response)
+            # ── NEW FEATURE: if the agent returned a DataFrame, render + download
+            if isinstance(response, pd.DataFrame):
+                st.dataframe(response)
+
+                csv_bytes = response.to_csv(index=False).encode("utf-8")
+                st.download_button(
+                    label="📥 Download this result as CSV",
+                    data=csv_bytes,
+                    file_name="query_result.csv",
+                    mime="text/csv",
+                )
+
+                chat_reply = (
+                    "Here is the table you requested. "
+                    "Use the button above to download it as a CSV file."
+                )
+            else:
+                chat_reply = response
 
         except UnicodeEncodeError:
             chat_reply = (
