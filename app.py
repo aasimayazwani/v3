@@ -106,7 +106,7 @@ def get_db_connection(db_path: Path, api_key_ascii: str):
 
     llm = ChatOpenAI(
         openai_api_key=api_key_ascii,
-        model_name="gpt-4o-mini",
+        model_name="gpt-4o",
         streaming=True,
     )
     return sql_db, llm
