@@ -135,6 +135,7 @@ agent = create_sql_agent(
     verbose=True,
     agent_type=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
     prefix=custom_prefix,
+    handle_parsing_errors=True,
 )
 
 ###############################################################################
