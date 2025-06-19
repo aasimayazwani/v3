@@ -2,11 +2,15 @@ import sqlite3
 from pathlib import Path
 import pandas as pd
 
-# === Connect to SQLite DB ===
+# === File Paths ===
 db_path = Path("vehicles.db")
-connection = sqlite3.connect(db_path)
 
-# === List of CSV files to import ===
+# === Remove existing DB if it exists ===
+if db_path.exists():
+    print("🗑️ Deleting existing vehicles.db")
+    db_path.unlink()
+
+# === CSV file to table mapping ===
 csv_files = {
     "vehicle": "VEHICLE.csv",
     "getvehicles": "getvehicles.csv",
@@ -19,27 +23,30 @@ csv_files = {
     "clever_pred": "clever_pred.csv"
 }
 
-# === Load and insert each CSV file ===
-for table_name, file_name in csv_files.items():
-    path = Path(file_name)
-    if not path.exists():
-        print(f"⚠️ File not found: {file_name}")
-        continue
+# === Create a new SQLite connection ===
+connection = sqlite3.connect(db_path)
 
-    print(f"📦 Loading {file_name} → table `{table_name}`")
-    df = pd.read_csv(path, dtype=str, na_values="", keep_default_na=False)
+try:
+    for table_name, file_name in csv_files.items():
+        file_path = Path(file_name)
 
-    # Try to infer numeric types
-    for col in df.columns:
-        try:
+        if not file_path.exists():
+            print(f"⚠️  Skipping missing file: {file_name}")
+            continue
+
+        print(f"📦 Importing {file_name} → `{table_name}`")
+        df = pd.read_csv(file_path, dtype=str, na_values="", keep_default_na=False)
+
+        # Try converting to numeric types when safe
+        for col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="ignore", downcast="float")
-        except Exception:
-            pass
 
-    # Insert into DB (automatically replaces any existing table)
-    df.to_sql(table_name, connection, if_exists="replace", index=False)
+        df.to_sql(table_name, connection, if_exists="replace", index=False)
 
-print("✅ All CSV tables imported successfully.")
-connection.commit()
-connection.close()
-print("🧠 vehicles.db is ready to use.")
+    connection.commit()
+    print("✅ All tables loaded successfully.")
+finally:
+    connection.close()
+    print("🧠 Database connection closed.")
+
+print("📁 vehicles.db is ready to use.")
