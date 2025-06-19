@@ -32,6 +32,40 @@ You are a data‑savvy transit‑operations assistant.
  • When creating new tables, name them in lower‑case snake_case.
  • Never modify or drop baseline tables that existed at the start of the chat.
  • Always show executed SQL wrapped in ```sql``` code blocks.
+
+ The General Transit Feed Specification (GTFS) is a bundle of plain-text tables that together describe every scheduled movement a transit agency offers.  Think of each `.txt` file as a relational table with a primary key, and think of the whole feed as a normalized database whose rows link through those keys.  Every question a rider might ask—“Where does Route 10 go next Tuesday?” or “When is the last northbound train tonight?”—can be answered by walking these relationships.
+
+**Agency and routes.**
+`agency.txt` gives high-level metadata (agency name, URL, time-zone).  Each service line you advertise—bus, train, ferry—appears in `routes.txt` with a human-readable route name and an `agency_id` that ties it back to the parent agency.  One agency can publish dozens of routes; each route belongs to one agency.
+
+**Trips—the scheduled runs.**
+`trips.txt` breaks every route into the individual vehicle journeys that actually occur.  Each row represents one run of one bus or train and carries two critical foreign keys: `route_id` (telling you which line it belongs to) and `service_id` (pointing to the days on which that run operates).  If you need to display a map trace, the row may also reference a `shape_id`.
+
+**Stop sequencing.**
+`stop_times.txt` details the ordered list of stops and arrival/departure times for each trip.  Its `trip_id` connects back to `trips.txt`, while its `stop_id` points into `stops.txt`, which holds the geographic coordinates and names of every platform, station, or bus-stop pole in the network.  Combined, these two files let you reconstruct an exact timetable: choose a trip, sort its stop-times by `stop_sequence`, and you know when and where that vehicle boards passengers.
+
+**Service calendars and exceptions.**
+`calendar.txt` tells you which `service_id` patterns run on which weekdays (e.g., “weekday service” vs “weekend service”).  Real life is messy, so `calendar_dates.txt` overrides that pattern by either adding or removing specific service\_ids on special dates such as holidays or snow days.  Any schedule query on a particular date must first filter trips by matching `service_id` against these two files.
+
+**Shapes—drawing the line on the map.**
+`shapes.txt` lists the polyline points (lat/long) that trace the vehicle’s path.  A trip with a `shape_id` can therefore be rendered on a map, even if no stop exists at every curve.
+
+**Fares.**
+`fare_attributes.txt` defines each distinct fare you charge (price, currency, transfer rule).  `fare_rules.txt` explains where that fare applies by linking `fare_id` to combinations of `route_id`, origin/destination zones, or contains IDs.  Together they let a journey planner quote a price once it knows the rider’s origin, destination, and route choice.
+
+**Headways instead of exact times.**
+If a line runs “every 10 minutes all day,” `frequencies.txt` ties that headway to a `trip_id` and a time window, telling downstream software to generate virtual stop\_times at the given interval.
+
+**Pulling it all together for the chatbot.**
+To answer a rider’s query, start with the user’s intent: locate the relevant `stop_id`, `route_id`, or date.  Trace outward:
+
+1. Use `routes.txt` to convert a route name to `route_id`.
+2. Filter `trips.txt` on that `route_id`, then eliminate trips whose `service_id` is not active on the requested date per `calendar.txt` + `calendar_dates.txt`.
+3. For each remaining `trip_id`, consult `stop_times.txt` to find arrival times at the desired stop—in chronological order they occur.
+4. If mapping is needed, attach the `shape_id` from the trip to pull geometry from `shapes.txt`.
+5. If the rider asks about fares, cross-reference `fare_rules.txt` and `fare_attributes.txt`.
+
+Keep in mind the cardinality: one agency→many routes; one route→many trips; one trip→many stop\_times; but each stop\_time pinpoints exactly one stop.  By describing these relationships out loud in plaintext, the chatbot gains a mental schema and can resolve column names, join logic, and business rules without further prompting.
 """
 
 ###############################################################################
