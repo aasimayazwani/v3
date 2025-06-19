@@ -91,7 +91,7 @@ st.set_page_config(page_title="LangChain • Vehicles DB", page_icon="🚌")
 st.title("🚌 Chat with Vehicles Database")
 
 # Try to fetch OpenAI API key from secrets first
-api_key_raw = st.secrets.get("openai_api_key", "")
+api_key_raw = st.secrets.get("OPENAI_API_KEY", "")
 
 # If not set, fallback to user prompt
 if not api_key_raw:
