@@ -289,6 +289,8 @@ agent = AgentExecutor.from_agent_and_tools(
     tools=toolkit.get_tools(),
     handle_parsing_errors=True,
     verbose=True,
+    max_iterations=10,         # Adjust this as needed
+    max_execution_time=30,    # In seconds
 )
 
 ###############################################################################
