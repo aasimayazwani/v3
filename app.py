@@ -1,6 +1,6 @@
 ###############################################################################
-# app.py – streamlined, hardened version for vehicles.db                      #
-# (ChatGPT API + developer‑defined system instructions)                       #
+# app.py – streamlined, hardened version for vehicles.db
+# (ChatGPT API + developer-defined system instructions)
 ###############################################################################
 import unicodedata
 from pathlib import Path
@@ -17,16 +17,17 @@ from langchain.callbacks import StreamlitCallbackHandler
 from langchain.sql_database import SQLDatabase
 from langchain_openai import ChatOpenAI
 
-# Attempt to pull LangChain's default SQL prompt so we can append our own.
+# Attempt to pull LangChain's default SQL prompt so we can append our own (unused now,
+# but keeping for future reference in case you want to switch prompts).
 try:
     from langchain.agents.agent_toolkits.sql.prompt import SQL_PREFIX as _LC_SQL_PREFIX
-except Exception:  # Fallback if import path changes
+except Exception:
     _LC_SQL_PREFIX = ""
 
 ###############################################################################
 # ---------- Developer system instructions -----------------------------------
 ###############################################################################
-SYSTEM_INSTRUCTIONS = """
+SYSTEM_INSTRUCTIONS = SYSTEM_INSTRUCTIONS = """
 Here is your cleaned and reformatted version, written as a single plain-text block without smart quotes, markdown formatting, or code symbols that could break a parser. It’s ready for use in a chatbot system that needs raw text-based context.
 
 ---
@@ -70,7 +71,7 @@ DB_FILE = Path(__file__).parent / "vehicles.db"
 
 
 def ascii_sanitise(value: str) -> str:
-    """Return a strictly‑ASCII version of `value`."""
+    """Return a strictly-ASCII version of `value`."""
     return (
         unicodedata.normalize("NFKD", value)
         .encode("ascii", errors="ignore")
@@ -91,7 +92,7 @@ if not api_key:
     st.stop()
 
 ###############################################################################
-# ---------- Configure DB connection (cached, auto‑invalidated) --------------
+# ---------- Configure DB connection (cached, auto-invalidated) --------------
 ###############################################################################
 @st.cache_resource(ttl=0)
 def get_db_connection(db_path: Path, api_key_ascii: str):
@@ -99,7 +100,8 @@ def get_db_connection(db_path: Path, api_key_ascii: str):
     if not db_path.exists():
         raise FileNotFoundError(f"Database file not found at: {db_path}")
 
-    st.session_state["_db_mtime"] = db_path.stat().st_mtime  # refresh on change
+    # Track mtime so Streamlit invalidates cache if DB file changes
+    st.session_state["_db_mtime"] = db_path.stat().st_mtime
 
     creator = lambda: sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     sql_db = SQLDatabase(create_engine("sqlite:///", creator=creator))
@@ -114,7 +116,8 @@ def get_db_connection(db_path: Path, api_key_ascii: str):
 
     return sql_db, raw_llm, bound_llm
 
-db, llm = get_db_connection(DB_FILE, api_key)
+
+db, raw_llm, bound_llm = get_db_connection(DB_FILE, api_key)
 
 ###############################################################################
 # ---------- Capture baseline tables -----------------------------------------
@@ -122,24 +125,20 @@ db, llm = get_db_connection(DB_FILE, api_key)
 if "base_tables" not in st.session_state:
     with sqlite3.connect(f"file:{DB_FILE}?mode=ro", uri=True) as _conn:
         st.session_state["base_tables"] = {
-            row[0] for row in _conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table';"
-            )
+            row[0]
+            for row in _conn.execute("SELECT name FROM sqlite_master WHERE type='table';")
         }
 
 ###############################################################################
-# ---------- LangChain agent with custom prompt ------------------------------
+# ---------- LangChain agent --------------------------------------------------
 ###############################################################################
-
-toolkit = SQLDatabaseToolkit(db=db, llm=llm)
-
-#custom_prefix = SYSTEM_INSTRUCTIONS.strip() + "\n\n" + _LC_SQL_PREFIX
+toolkit = SQLDatabaseToolkit(db=db, llm=raw_llm)  # must use raw LLM
 
 agent = create_sql_agent(
-    llm=llm,
+    llm=bound_llm,        # bound LLM carries the system instructions
     toolkit=toolkit,
     verbose=True,
-    agent_type=AgentType.OPENAI_FUNCTIONS,  # 👈 updated agent type
+    agent_type=AgentType.OPENAI_FUNCTIONS,
 )
 
 ###############################################################################
@@ -149,9 +148,8 @@ st.sidebar.markdown("### 📥 Download *new* Table as CSV")
 
 with sqlite3.connect(f"file:{DB_FILE}?mode=ro", uri=True) as _conn:
     current_tables = {
-        row[0] for row in _conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table';"
-        )
+        row[0]
+        for row in _conn.execute("SELECT name FROM sqlite_master WHERE type='table';")
     }
 
 new_tables = sorted(current_tables - st.session_state["base_tables"])
