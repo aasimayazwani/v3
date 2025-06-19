@@ -52,7 +52,7 @@ The getvehicles table is a real-time feed of active vehicles updated every minut
 
 The clever_pred table provides minute-by-minute battery predictions for electric vehicles (IDs include 2401-2407, 707, 736, 768, 775, 777). The primary key is timestamp and vid. It includes current and predicted state of charge (SOC), remaining miles, efficiency, energy consumed, speeds, load category, and outside temperature. SOC under 10% triggers a critical alert; below 40% is a low alert.
 
-The trip_event_bustime table stores historical performance for every electric trip. The primary key is vid, tatripid, and start_timestamp. It includes start/end times, distance, SOC delta, energy consumption, efficiencies, environmental and vehicle telemetry statistics.
+The historical_trips table stores historical performance for every electric trip. The primary key is vid, tatripid, and start_timestamp. It includes start/end times, distance, SOC delta, energy consumption, efficiencies, environmental and vehicle telemetry statistics.
 
 The trip_event_bustime_to_block table summarizes performance at the block level. It aggregates trip counts, drivers, total energy, and distance across a service block.
 
