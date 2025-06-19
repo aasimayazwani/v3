@@ -95,7 +95,7 @@ if not api_key:
 ###############################################################################
 @st.cache_resource(ttl=0)
 def get_db_connection(db_path: Path, api_key_ascii: str):
-    """Return (SQLDatabase, ChatOpenAI LLM) tuple."""
+    """Return (SQLDatabase, raw_llm, bound_llm) tuple."""
     if not db_path.exists():
         raise FileNotFoundError(f"Database file not found at: {db_path}")
 
@@ -104,13 +104,15 @@ def get_db_connection(db_path: Path, api_key_ascii: str):
     creator = lambda: sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     sql_db = SQLDatabase(create_engine("sqlite:///", creator=creator))
 
-    llm = ChatOpenAI(
+    raw_llm = ChatOpenAI(
         openai_api_key=api_key_ascii,
         model_name="gpt-4o",
         streaming=True,
-    ).bind(system_message=SYSTEM_INSTRUCTIONS.strip())
-    return sql_db, llm
+    )
 
+    bound_llm = raw_llm.bind(system_message=SYSTEM_INSTRUCTIONS.strip())
+
+    return sql_db, raw_llm, bound_llm
 
 db, llm = get_db_connection(DB_FILE, api_key)
 
