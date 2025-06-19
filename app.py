@@ -25,7 +25,7 @@ except Exception:  # Fallback if import path changes
 ###############################################################################
 # ---------- Developer system instructions -----------------------------------
 ###############################################################################
-FORMAT_INSTRUCTIONS = FORMAT_INSTRUCTIONS = """
+FORMAT_INSTRUCTIONS = """
 Use the following format in your response:
 
 Thought: Do I need to use a tool? Yes or No.
@@ -193,7 +193,15 @@ By understanding these variables and their interconnections, you can select the 
   - Step 2: Category: historical data → Tables: trip_event_bustime.  
   - Variables: Use vid, start_timestamp, end_timestamp, route_id.
 
-if the user has asked for set of numbers that can be formatted in a tabular table format for them to view and download from inside the chat. 
+If the result includes more than one row or multiple related statistics, always present the output in a tabular format using markdown. Example:
+
+| Metric                  | Value   |
+|-------------------------|---------|
+| Average kWh/mile        | 2.037   |
+| Minimum kWh/mile        | 1.967   |
+| Maximum kWh/mile        | 2.107   |
+
+This formatting helps users view and download data easily. Always default to this style whenever numeric results can be structured.
 """
 
 def extract_raw_sql(text: str) -> str:
