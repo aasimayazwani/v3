@@ -276,6 +276,33 @@ def extract_raw_sql(text: str) -> str:
     """Extracts the raw SQL query from markdown-fenced output, or returns raw."""
     match = re.search(r"```sql\s+(.*?)```", text, re.DOTALL | re.IGNORECASE)
     return match.group(1).strip() if match else text.strip()
+
+
+
+def is_transit_related(query: str, api_key: str) -> bool:
+    """Check if the user's query is related to fleet/transit/dispatch."""
+    from openai import OpenAI
+    client = OpenAI(api_key=api_key)
+
+    prompt = (
+        "Is the following question about public transportation, electric buses, "
+        "transit dispatch, scheduling, or vehicle telematics? Reply with only Yes or No.\n\n"
+        f"Question: {query.strip()}"
+    )
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",  # cheap, fast model
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0,
+            max_tokens=2,
+        )
+        return response.choices[0].message.content.strip().lower() == "yes"
+    except Exception as e:
+        st.warning(f"⚠️ Domain check failed: {e}")
+        return True  # fallback: assume yes
+
+
 ###############################################################################
 # ---------- Utility helpers --------------------------------------------------
 ###############################################################################
@@ -439,40 +466,32 @@ for msg in st.session_state.messages:
 user_query = st.chat_input("Ask a question…")
 
 if user_query:
-    st.chat_message("user").write(user_query)
-    st.session_state.messages.append({"role": "user", "content": user_query})
-
-    with st.chat_message("assistant"):
-        cb = StreamlitCallbackHandler(st.container())
-        try:
-            response = agent.run(user_query, callbacks=[cb])
-
-            # ── NEW FEATURE: if the agent returned a DataFrame, render + download
-            if isinstance(response, pd.DataFrame):
-                st.dataframe(response)
-
-                csv_bytes = response.to_csv(index=False).encode("utf-8")
-                st.download_button(
-                    label="📥 Download this result as CSV",
-                    data=csv_bytes,
-                    file_name="query_result.csv",
-                    mime="text/csv",
-                )
-
-                chat_reply = (
-                    "Here is the table you requested. "
-                    "Use the button above to download it as a CSV file."
-                )
-            else:
-                chat_reply = response
-
-        except UnicodeEncodeError:
-            chat_reply = (
-                "⚠️ I encountered a Unicode encoding issue while talking to the LLM. "
-                "Please try rephrasing your question using plain ASCII characters."
-            )
-        except Exception as e:
-            chat_reply = f"⚠️ Something went wrong:\n\n`{e}`"
-
-        st.write(chat_reply)
+    if not is_transit_related(user_query, api_key):
+        chat_reply = (
+            "🚦 This assistant is trained only for public transit, electric vehicle fleet, and dispatch-related topics. "
+            "Please ask a question related to those domains."
+        )
+        st.chat_message("user").write(user_query)
+        st.chat_message("assistant").write(chat_reply)
+        st.session_state.messages.append({"role": "user", "content": user_query})
         st.session_state.messages.append({"role": "assistant", "content": chat_reply})
+    else:
+        st.chat_message("user").write(user_query)
+        st.session_state.messages.append({"role": "user", "content": user_query})
+
+        with st.chat_message("assistant"):
+            cb = StreamlitCallbackHandler(st.container())
+            try:
+                response = agent.run(user_query, callbacks=[cb])
+                chat_reply = display_response_with_downloads(response)
+
+            except UnicodeEncodeError:
+                chat_reply = (
+                    "⚠️ I encountered a Unicode encoding issue while talking to the LLM. "
+                    "Please try rephrasing your question using plain ASCII characters."
+                )
+            except Exception as e:
+                chat_reply = f"⚠️ Something went wrong:\n\n`{e}`"
+
+            st.write(chat_reply)
+            st.session_state.messages.append({"role": "assistant", "content": chat_reply})
