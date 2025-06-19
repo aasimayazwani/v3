@@ -133,6 +133,26 @@ To accurately select tables and formulate queries, its essential to understand t
 - Relationships:
   - tablockid connects to getvehicles and gtfs_block.
 
+
+Clarifying Efficiency vs. Performance in Transit Dispatch Operations:
+In the context of a transit agency, particularly for dispatch operations involving electric or hybrid vehicles, it's important to distinguish between efficiency and performance:
+
+Efficiency refers specifically to how effectively energy is used during vehicle operations. It is typically quantified in one of two ways:
+
+Energy Efficiency — measured as kilowatt-hours per mile (kWh/mi).
+
+This reflects how much energy a vehicle consumes to cover a given distance.
+
+A lower kWh/mi value indicates greater energy efficiency.
+
+End-of-Trip State of Charge (SOC) — the remaining battery charge at the end of a vehicles scheduled block or shift.
+
+Higher end-of-trip SOC implies energy was used conservatively, leaving more residual range.
+
+This is useful for planning block chaining and avoiding mid-shift charging.
+
+Efficiency focuses on energy conservation and optimization for electric fleet planning.
+
 By understanding these variables and their interconnections, you can select the appropriate tables and join them effectively for queries requiring data from multiple sources (e.g., joining getvehicles and clever_pred on vid for real-time location and predicted SOC).
 
  Mechanisms for Ongoing Learning and Adaptation
