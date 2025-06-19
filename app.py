@@ -170,7 +170,7 @@ DB_FILE = Path(__file__).parent / "vehicles.db"
 
 
 def ascii_sanitise(value: str) -> str:
-    """Return a strictly‑ASCII version of `value`."""
+    """Return a strictly-ASCII version of `value`."""
     return (
         unicodedata.normalize("NFKD", value)
         .encode("ascii", errors="ignore")
@@ -198,7 +198,7 @@ if not api_key:
     st.stop()
 
 ###############################################################################
-# ---------- Configure DB connection (cached, auto‑invalidated) --------------
+# ---------- Configure DB connection (cached, auto-invalidated) --------------
 ###############################################################################
 @st.cache_resource(ttl=0)
 def get_db_connection(db_path: Path, api_key_ascii: str):
@@ -210,6 +210,7 @@ def get_db_connection(db_path: Path, api_key_ascii: str):
 
     from sqlalchemy.pool import StaticPool
 
+    # ⬇️ Open in read-only mode so no accidental writes occur
     creator = lambda: sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     engine = create_engine(
         "sqlite://",
@@ -244,9 +245,7 @@ if "base_tables" not in st.session_state:
 ###############################################################################
 # ---------- LangChain agent with custom prompt ------------------------------
 ###############################################################################
-
 toolkit = SQLDatabaseToolkit(db=db, llm=llm)
-
 custom_prefix = SYSTEM_INSTRUCTIONS.strip() + "\n\n" + _LC_SQL_PREFIX
 
 from langchain.agents import AgentExecutor
@@ -262,10 +261,9 @@ _base_agent = create_sql_agent(
 agent = AgentExecutor.from_agent_and_tools(
     agent=_base_agent.agent,
     tools=toolkit.get_tools(),
-    handle_parsing_errors=True,  # ✅ Apply here
+    handle_parsing_errors=True,
     verbose=True,
 )
-
 
 ###############################################################################
 # ---------- Table Download UI (new tables only) -----------------------------
@@ -310,8 +308,8 @@ if (
         {
             "role": "assistant",
             "content": (
-                "Hi there – ask me anything about the **VEHICLE** table, or "
-                "create new tables and download them from the sidebar!"
+                "Hi there – ask me anything about the **vehicles.db** tables. "
+                "If your query returns a table, I'll show it below and you can download it!"
             ),
         }
     ]
@@ -329,13 +327,33 @@ if user_query:
         cb = StreamlitCallbackHandler(st.container())
         try:
             response = agent.run(user_query, callbacks=[cb])
+
+            # ── NEW FEATURE: if the agent returned a DataFrame, render + download
+            if isinstance(response, pd.DataFrame):
+                st.dataframe(response)
+
+                csv_bytes = response.to_csv(index=False).encode("utf-8")
+                st.download_button(
+                    label="📥 Download this result as CSV",
+                    data=csv_bytes,
+                    file_name="query_result.csv",
+                    mime="text/csv",
+                )
+
+                chat_reply = (
+                    "Here is the table you requested. "
+                    "Use the button above to download it as a CSV file."
+                )
+            else:
+                chat_reply = response
+
         except UnicodeEncodeError:
-            response = (
+            chat_reply = (
                 "⚠️ I encountered a Unicode encoding issue while talking to the LLM. "
                 "Please try rephrasing your question using plain ASCII characters."
             )
         except Exception as e:
-            response = f"⚠️ Something went wrong:\n\n`{e}`"
+            chat_reply = f"⚠️ Something went wrong:\n\n`{e}`"
 
-        st.write(response)
-        st.session_state.messages.append({"role": "assistant", "content": response})
+        st.write(chat_reply)
+        st.session_state.messages.append({"role": "assistant", "content": chat_reply})
