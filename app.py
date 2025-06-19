@@ -86,7 +86,7 @@ def display_response_with_downloads(response) -> str:
 
         return "Here is the table you requested. Use the buttons above to download it as CSV or PDF."
     else:
-        st.write(response)
+        #st.write(response)
         return response
 
 
