@@ -14,7 +14,7 @@ csv_files = {
     "gtfs_trip": "gtfs_trip.csv",
     "gtfs_shape": "gtfs_shape.csv",
     "gtfs_calendar_dates": "gtfs_calendar_dates.csv",
-    "trip_event_bustime": "trip_event_bustime.csv",
+    "historical_trips": "historical_trips.csv",
     "trip_event_bustime_to_block": "trip_event_bustime_to_block.csv",
     "clever_pred": "clever_pred.csv"
 }
