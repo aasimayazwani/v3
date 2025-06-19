@@ -90,11 +90,18 @@ def ascii_sanitise(value: str) -> str:
 st.set_page_config(page_title="LangChain • Vehicles DB", page_icon="🚌")
 st.title("🚌 Chat with Vehicles Database")
 
-api_key_raw = st.sidebar.text_input("OpenAI API Key", type="password")
+# Try to fetch OpenAI API key from secrets first
+api_key_raw = st.secrets.get("openai_api_key", "")
+
+# If not set, fallback to user prompt
+if not api_key_raw:
+    api_key_raw = st.sidebar.text_input("🔐 Enter OpenAI API Key", type="password")
+
 api_key = ascii_sanitise(api_key_raw or "")
 
+# Stop if no key is present at all
 if not api_key:
-    st.info("Please enter your OpenAI API key ↑ to begin.", icon="🔐")
+    st.warning("OpenAI API key not found. Please add it to Streamlit secrets or enter it above.")
     st.stop()
 
 ###############################################################################
@@ -108,8 +115,16 @@ def get_db_connection(db_path: Path, api_key_ascii: str):
 
     st.session_state["_db_mtime"] = db_path.stat().st_mtime  # refresh on change
 
+    from sqlalchemy.pool import StaticPool
+
     creator = lambda: sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
-    sql_db = SQLDatabase(create_engine("sqlite:///", creator=creator))
+    engine = create_engine(
+        "sqlite://",
+        creator=creator,
+        poolclass=StaticPool,
+        connect_args={"check_same_thread": False},
+    )
+    sql_db = SQLDatabase(engine)
 
     llm = ChatOpenAI(
         openai_api_key=api_key_ascii,
