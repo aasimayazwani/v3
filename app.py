@@ -9,8 +9,8 @@ import streamlit as st
 from sqlalchemy import create_engine
 import sqlite3
 import pandas as pd
-
-from langchain.agents import create_sql_agent
+from langchain.agents.agent import FORMAT_INSTRUCTIONS
+from langchain.agents import create_sql_agent, AgentExecutor
 from langchain.agents.agent_toolkits import SQLDatabaseToolkit
 from langchain.agents.agent_types import AgentType
 from langchain.callbacks import StreamlitCallbackHandler
@@ -272,9 +272,14 @@ if "base_tables" not in st.session_state:
 # ---------- LangChain agent with custom prompt ------------------------------
 ###############################################################################
 toolkit = SQLDatabaseToolkit(db=db, llm=llm)
-custom_prefix = SYSTEM_INSTRUCTIONS.strip() + "\n\n" + _LC_SQL_PREFIX
-
-from langchain.agents import AgentExecutor
+# custom_prefix = SYSTEM_INSTRUCTIONS.strip() + "\n\n" + _LC_SQL_PREFIX
+custom_prefix = (
+    SYSTEM_INSTRUCTIONS.strip()
+    + "\n\n"
+    + FORMAT_INSTRUCTIONS.strip()
+    + "\n\n"
+    + _LC_SQL_PREFIX.strip()
+)
 
 _base_agent = create_sql_agent(
     llm=llm,
