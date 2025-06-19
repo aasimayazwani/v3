@@ -1,6 +1,7 @@
 langchain
 python-dotenv
 ipykernel
+io
 langchain-community
 pypdf
 bs4
@@ -13,6 +14,7 @@ chromadb
 sentence_transformers
 langchain_huggingface
 faiss-cpu
+reportlab
 langchain_chroma
 duckdb
 pandas

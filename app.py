@@ -16,11 +16,83 @@ from langchain.callbacks import StreamlitCallbackHandler
 from langchain.sql_database import SQLDatabase
 from langchain_openai import ChatOpenAI
 import re
+from io import BytesIO, StringIO
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle
+from reportlab.lib.pagesizes import letter
+from reportlab.lib import colors
 # Attempt to pull LangChain's default SQL prompt so we can append our own.
 try:
     from langchain.agents.agent_toolkits.sql.prompt import SQL_PREFIX as _LC_SQL_PREFIX
 except Exception:  # Fallback if import path changes
     _LC_SQL_PREFIX = ""
+
+def extract_markdown_table(markdown_text: str) -> pd.DataFrame | None:
+    """Try to extract a DataFrame from a markdown table in a string."""
+    lines = markdown_text.strip().splitlines()
+    table_lines = [line for line in lines if "|" in line]
+    if len(table_lines) >= 2:
+        csv_text = "\n".join(
+            line.strip().strip("|").replace("|", ",")
+            for line in table_lines
+            if "---" not in line
+        )
+        try:
+            return pd.read_csv(StringIO(csv_text))
+        except Exception:
+            return None
+    return None
+
+def display_response_with_downloads(response) -> str:
+    """Display a response and return the assistant reply content (for chat history)."""
+    response_df = None
+
+    if isinstance(response, pd.DataFrame):
+        response_df = response
+    elif isinstance(response, str):
+        response_df = extract_markdown_table(response)
+
+    if response_df is not None:
+        st.dataframe(response_df)
+
+        format_choice = st.radio(
+            "📁 Choose download format:",
+            options=["CSV", "PDF"],
+            horizontal=True,
+            index=0,
+        )
+
+        if format_choice == "CSV":
+            st.download_button(
+                label="📥 Download as CSV",
+                data=response_df.to_csv(index=False).encode("utf-8"),
+                file_name="query_result.csv",
+                mime="text/csv",
+            )
+        elif format_choice == "PDF":
+            pdf_buffer = BytesIO()
+            doc = SimpleDocTemplate(pdf_buffer, pagesize=letter)
+            data = [response_df.columns.tolist()] + response_df.values.tolist()
+            table = Table(data)
+            table.setStyle(TableStyle([
+                ("BACKGROUND", (0, 0), (-1, 0), colors.lightblue),
+                ("GRID", (0, 0), (-1, -1), 1, colors.grey),
+                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+            ]))
+            doc.build([table])
+            pdf_bytes = pdf_buffer.getvalue()
+
+            st.download_button(
+                label="📥 Download as PDF",
+                data=pdf_bytes,
+                file_name="query_result.pdf",
+                mime="application/pdf",
+            )
+
+        return "Here is the table you requested. Use the buttons above to download it as CSV or PDF."
+    else:
+        st.write(response)
+        return response
+
 
 ###############################################################################
 # ---------- Developer system instructions -----------------------------------
@@ -377,26 +449,11 @@ if user_query:
     with st.chat_message("assistant"):
         cb = StreamlitCallbackHandler(st.container())
         try:
+            # Run the agent
             response = agent.run(user_query, callbacks=[cb])
 
-            # ── NEW FEATURE: if the agent returned a DataFrame, render + download
-            if isinstance(response, pd.DataFrame):
-                st.dataframe(response)
-
-                csv_bytes = response.to_csv(index=False).encode("utf-8")
-                st.download_button(
-                    label="📥 Download this result as CSV",
-                    data=csv_bytes,
-                    file_name="query_result.csv",
-                    mime="text/csv",
-                )
-
-                chat_reply = (
-                    "Here is the table you requested. "
-                    "Use the button above to download it as a CSV file."
-                )
-            else:
-                chat_reply = response
+            # NEW unified display + download handling
+            chat_reply = display_response_with_downloads(response)
 
         except UnicodeEncodeError:
             chat_reply = (
