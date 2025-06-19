@@ -63,7 +63,7 @@ When answering questions:
 - Use gtfs_block and gtfs_trip to answer schedule and routing queries.
 - Use getvehicles for real-time bus positions and delay status.
 - Use clever_pred for battery health monitoring.
-- Use historical tables (trip_event_bustime, trip_event_bustime_to_block) for operational performance analysis.
+- Use historical tables (historical_trips, trip_event_bustime_to_block) for operational performance analysis.
 
 Always present a brief explanation followed by any SQL you executed, written inside a fenced block that starts with three backticks and the word sql.
 
