@@ -17,7 +17,7 @@ from langchain.callbacks import StreamlitCallbackHandler
 from langchain.sql_database import SQLDatabase
 from langchain_openai import ChatOpenAI
 
-# Attempt to pull LangChains default SQL prompt so we can append our own.
+# Attempt to pull LangChain's default SQL prompt so we can append our own.
 try:
     from langchain.agents.agent_toolkits.sql.prompt import SQL_PREFIX as _LC_SQL_PREFIX
 except Exception:  # Fallback if import path changes
@@ -236,7 +236,7 @@ if "base_tables" not in st.session_state:
     with sqlite3.connect(f"file:{DB_FILE}?mode=ro", uri=True) as _conn:
         st.session_state["base_tables"] = {
             row[0] for row in _conn.execute(
-                "SELECT name FROM sqlite_master WHERE type=table;"
+                "SELECT name FROM sqlite_master WHERE type='table';"
             )
         }
 
@@ -265,7 +265,7 @@ st.sidebar.markdown("### 📥 Download *new* Table as CSV")
 with sqlite3.connect(f"file:{DB_FILE}?mode=ro", uri=True) as _conn:
     current_tables = {
         row[0] for row in _conn.execute(
-            "SELECT name FROM sqlite_master WHERE type=table;"
+            "SELECT name FROM sqlite_master WHERE type='table';"
         )
     }
 
