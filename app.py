@@ -25,7 +25,7 @@ except Exception:  # Fallback if import path changes
 ###############################################################################
 # ---------- Developer system instructions -----------------------------------
 ###############################################################################
-FORMAT_INSTRUCTIONS = """
+FORMAT_INSTRUCTIONS = FORMAT_INSTRUCTIONS = """
 Use the following format in your response:
 
 Thought: Do I need to use a tool? Yes or No.
@@ -35,7 +35,7 @@ Action Input: the input to the action
 OR
 
 Thought: Do I need to use a tool? No.
-Final Answer: the final answer to the original input question.
+Final Answer: the final answer to the original input question. You must always use the phrase 'Final Answer:' exactly, or the system will throw a parsing error.
 """
 SYSTEM_INSTRUCTIONS = """ 
 System Instruction for SQL Chatbot Agent: Enhancing Table Selection Accuracy
