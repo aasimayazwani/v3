@@ -280,9 +280,9 @@ def extract_raw_sql(text: str) -> str:
 
 
 def is_transit_related(query: str, api_key: str) -> bool:
-    """Check if the user's query is related to fleet/transit/dispatch."""
-    import openai
-    openai.api_key = api_key
+    """Check if the user's query is related to fleet/transit/dispatch (for OpenAI SDK v1.0+)."""
+    from openai import OpenAI
+    client = OpenAI(api_key=api_key)
 
     prompt = (
         "Is the following question about public transportation, electric buses, "
@@ -291,18 +291,18 @@ def is_transit_related(query: str, api_key: str) -> bool:
     )
 
     try:
-        response = openai.ChatCompletion.create(
+        response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}],
             temperature=0,
-            max_tokens=2,
+            max_tokens=5,
         )
-        answer = response["choices"][0]["message"]["content"].strip().lower()
+        answer = response.choices[0].message.content.strip().lower()
         return "yes" in answer
     except Exception as e:
         st.warning(f"⚠️ Domain check failed: {e}")
-        return True  # fallback: assume in-domain
-
+        return True  # fallback to allow query
+    
 ###############################################################################
 # ---------- Utility helpers --------------------------------------------------
 ###############################################################################
