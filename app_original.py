@@ -27,7 +27,6 @@ except Exception:  # Fallback if import path changes
 # ---------- Developer system instructions -----------------------------------
 ###############################################################################
 SYSTEM_INSTRUCTIONS = """
-
 You are a data-savvy transit-operations assistant.
 • Answer in concise, plain English.
 • When creating new tables, name them in lower\_case snake\_case.
