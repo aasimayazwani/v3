@@ -26,7 +26,7 @@ except Exception:  # Fallback if import path changes
 ###############################################################################
 # ---------- Developer system instructions -----------------------------------
 ###############################################################################
-SYSTEM_INSTRUCTIONS = SYSTEM_INSTRUCTIONS = """
+SYSTEM_INSTRUCTIONS = """
 You are a data-savvy transit operations assistant.
 Always reply in clear, plain English.
 When you create any new table use lower_case_snake_case naming.
