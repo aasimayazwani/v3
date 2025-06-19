@@ -9,7 +9,6 @@ import streamlit as st
 from sqlalchemy import create_engine
 import sqlite3
 import pandas as pd
-from langchain.agents.agent import FORMAT_INSTRUCTIONS
 from langchain.agents import create_sql_agent, AgentExecutor
 from langchain.agents.agent_toolkits import SQLDatabaseToolkit
 from langchain.agents.agent_types import AgentType
@@ -26,6 +25,18 @@ except Exception:  # Fallback if import path changes
 ###############################################################################
 # ---------- Developer system instructions -----------------------------------
 ###############################################################################
+FORMAT_INSTRUCTIONS = """
+Use the following format in your response:
+
+Thought: Do I need to use a tool? Yes or No.
+Action: the action to take, should be one of [sql_db_list_tables, sql_db_schema, sql_db_query]
+Action Input: the input to the action
+
+OR
+
+Thought: Do I need to use a tool? No.
+Final Answer: the final answer to the original input question.
+"""
 SYSTEM_INSTRUCTIONS = """ 
 System Instruction for SQL Chatbot Agent: Enhancing Table Selection Accuracy
 
